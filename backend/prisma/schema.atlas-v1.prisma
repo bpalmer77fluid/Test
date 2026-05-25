@@ -1,0 +1,465 @@
+// =============================================================================
+// Atlas v1 — Prisma schema (DESIGN DRAFT, not yet applied)
+//
+// Layered as:
+//   1. Fluid integration boundary    (Company, Installation)        — kept
+//   2. Workspace concept             (Workspace)                    — new
+//   3. Identity                      (AtlasUser, Session)           — new
+//   4. Derived data                  (Customer, Order, Product, Rep) — enriched
+//   5. Collaboration                 (Comment, Mention, SavedView)  — new
+//   6. Audit                         (AuditLog)                     — new
+//   7. Sync infrastructure           (SyncState, RawEvent)          — new
+//
+// Conventions:
+//   - Money: native amount + currency + USD snapshot + FX rate used
+//   - Time:  DateTime is UTC; source timezone stored separately when relevant
+//   - Soft-delete via deactivatedAt/deletedAt
+//   - Every derived entity has a `version` int that bumps on update
+//     (lets comments show "commented when state was X (now Y)")
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// 1. FLUID INTEGRATION BOUNDARY
+// =============================================================================
+
+model Company {
+  id        String   @id @default(cuid())
+  fluidId   String   @unique
+  name      String
+  logoUrl   String?
+  fluidShop String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  installations Installation[]
+
+  @@map("companies")
+}
+
+model Installation {
+  id                       String   @id @default(cuid())
+  companyId                String
+  fluidId                  String   @unique
+  authenticationToken      String?  // DIT token — server↔Fluid only
+  webhookVerificationToken String?
+  companyDropletUuid       String?
+  isActive                 Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  workspace Workspace?
+
+  @@map("installations")
+}
+
+// =============================================================================
+// 2. WORKSPACE — Atlas's top-level container (1:1 with Installation)
+// =============================================================================
+
+model Workspace {
+  id              String   @id @default(cuid())
+  installationId  String   @unique
+  name            String   // copied from Company.name, editable in Atlas
+  defaultLocale   String   @default("en")
+  defaultCurrency String   @default("USD")
+  defaultTimezone String   @default("UTC")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  installation Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  users        AtlasUser[]
+  customers    Customer[]
+  orders       Order[]
+  products     Product[]
+  reps         Rep[]
+  comments     Comment[]
+  savedViews   SavedView[]
+  auditLogs    AuditLog[]
+  syncStates   SyncState[]
+  rawEvents    RawEvent[]
+
+  @@map("workspaces")
+}
+
+// =============================================================================
+// 3. IDENTITY
+// =============================================================================
+
+enum AtlasRole {
+  OWNER   // the installer
+  EXEC    // boardroom landing, KPI-focused
+  STAFF   // operations landing, queue-focused
+}
+
+model AtlasUser {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  email          String
+  name           String
+  fluidUserId    String?   // for reconciliation against Fluid admin list
+  role           AtlasRole @default(STAFF)
+  locale         String    @default("en")
+  timezone       String    @default("UTC")
+  currencyPref   String    @default("USD")
+  homeRegion     String?   // ISO-3166-1 alpha-2
+  mfaSecret      String?   // encrypted TOTP secret
+  mfaEnrolledAt  DateTime?
+  passwordHash   String?   // null until first sign-in completes
+  lastSignedInAt DateTime?
+  deactivatedAt  DateTime? // soft-delete; preserves comments/audit trail
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace        Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sessions         Session[]
+  comments         Comment[]
+  savedViews       SavedView[]
+  auditLogs        AuditLog[]
+  mentionsReceived Mention[]   @relation("MentionedUser")
+  mentionsCreated  Mention[]   @relation("AuthoringUser")
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId, deactivatedAt])
+  @@map("atlas_users")
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  userId       String
+  tokenHash    String    @unique
+  mfaSatisfied Boolean   @default(false)
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  user AtlasUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("sessions")
+}
+
+// =============================================================================
+// 4. DERIVED DATA — enriched, business-meaningful mirrors of Fluid records
+// =============================================================================
+
+model Customer {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  fluidCustomerId  String?   // may be null if first seen via an order
+  email            String
+  name             String?
+  phone            String?
+  countryCode      String?   // ISO-3166-1 alpha-2
+  region           String?   // e.g., "São Paulo"
+  city             String?
+  locale           String?
+  primaryCurrency  String?   // most-used currency by this customer
+  lifetimeValueUsd Decimal?  @db.Decimal(19, 4)
+  orderCount       Int       @default(0)
+  firstOrderAt     DateTime?
+  lastOrderAt      DateTime?
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  orders    Order[]
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId, countryCode])
+  @@index([workspaceId, lastOrderAt])
+  @@map("customers")
+}
+
+model Order {
+  id           String  @id @default(cuid())
+  workspaceId  String
+  fluidOrderId String
+  customerId   String?
+  repId        String?
+
+  orderNumber String?
+  status      String?
+
+  // --- Money: native + USD snapshot at event time ---
+  amountNative Decimal?  @db.Decimal(19, 4)
+  currency     String?   // ISO 4217
+  amountUsd    Decimal?  @db.Decimal(19, 4)
+  fxRateToUsd  Decimal?  @db.Decimal(19, 8)
+  fxSnapshotAt DateTime?
+
+  // --- Time: UTC implicit in DateTime, plus originating zone ---
+  placedAt       DateTime?
+  sourceTimezone String?
+
+  // --- Enrichment ---
+  itemCount   Int?
+  countryCode String? // ship-to
+  region      String?
+
+  // --- Stale-comment detection ---
+  version Int @default(1)
+
+  // --- Debug archive ---
+  rawPayload Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer  Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  rep       Rep?      @relation(fields: [repId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, fluidOrderId])
+  @@index([workspaceId, placedAt])
+  @@index([workspaceId, status])
+  @@index([workspaceId, countryCode])
+  @@index([customerId])
+  @@map("orders")
+}
+
+model Product {
+  id             String  @id @default(cuid())
+  workspaceId    String
+  fluidProductId String
+
+  title       String
+  sku         String?
+  description String?
+  imageUrl    String?
+  status      String? // active, draft, archived
+
+  // Money
+  priceNative   Decimal? @db.Decimal(19, 4)
+  priceCurrency String?
+  priceUsd      Decimal? @db.Decimal(19, 4)
+
+  inStock    Boolean @default(true)
+  stockCount Int?
+  isPublic   Boolean @default(true)
+
+  version    Int   @default(1)
+  rawPayload Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, fluidProductId])
+  @@index([workspaceId, status])
+  @@map("products")
+}
+
+model Rep {
+  id          String @id @default(cuid())
+  workspaceId String
+  fluidRepId  String
+
+  firstName      String
+  lastName       String
+  email          String?
+  phone          String?
+  active         Boolean @default(true)
+  externalId     String?
+  username       String?
+  shareGuid      String?
+  imageUrl       String?
+  roles          String?
+  countryCode    String?
+  languageCode   String?
+  customerLinkId Int? // Fluid's customer_id
+
+  // Atlas-side enrichment
+  region                String?
+  ordersAttributedCount Int      @default(0)
+  revenueAttributedUsd  Decimal? @db.Decimal(19, 4)
+
+  version    Int   @default(1)
+  rawPayload Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  orders    Order[]
+
+  @@unique([workspaceId, fluidRepId])
+  @@index([workspaceId, active])
+  @@index([workspaceId, countryCode])
+  @@map("reps")
+}
+
+// =============================================================================
+// 5. COLLABORATION — Atlas-native, read-only on Fluid data but writes here
+// =============================================================================
+
+enum EntityType {
+  ORDER
+  CUSTOMER
+  PRODUCT
+  REP
+}
+
+model Comment {
+  id                      String     @id @default(cuid())
+  workspaceId             String
+  authorId                String
+  entityType              EntityType
+  entityId                String     // soft FK — app layer enforces
+  entityVersionAtCreation Int        // for "commented when status was X" UI
+  body                    String     // markdown
+  editedAt                DateTime?
+  deletedAt               DateTime?
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author    AtlasUser @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  mentions  Mention[]
+
+  @@index([workspaceId, entityType, entityId])
+  @@index([authorId])
+  @@map("comments")
+}
+
+model Mention {
+  id              String    @id @default(cuid())
+  commentId       String
+  mentionedUserId String
+  authoringUserId String
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  comment       Comment   @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  mentionedUser AtlasUser @relation("MentionedUser", fields: [mentionedUserId], references: [id], onDelete: Cascade)
+  authoringUser AtlasUser @relation("AuthoringUser", fields: [authoringUserId], references: [id], onDelete: Cascade)
+
+  @@index([mentionedUserId, readAt])
+  @@map("mentions")
+}
+
+model SavedView {
+  id          String     @id @default(cuid())
+  workspaceId String
+  userId      String
+  name        String
+  entityType  EntityType
+  filters     Json       // arbitrary filter spec
+  isShared    Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      AtlasUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId])
+  @@map("saved_views")
+}
+
+// =============================================================================
+// 6. AUDIT
+// =============================================================================
+
+enum AuditAction {
+  USER_SIGNED_IN
+  USER_SIGNED_OUT
+  USER_PROMOTED
+  USER_DEMOTED
+  USER_DEACTIVATED
+  VIEW_ACCESSED
+  SEARCH_PERFORMED
+  COMMENT_CREATED
+  COMMENT_EDITED
+  COMMENT_DELETED
+  EXPORT_PERFORMED
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  workspaceId String
+  userId      String?     // null for system actions
+  action      AuditAction
+  entityType  EntityType?
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime    @default(now())
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      AtlasUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// 7. SYNC INFRASTRUCTURE
+// =============================================================================
+
+enum SyncDomain {
+  ADMINS
+  CUSTOMERS
+  ORDERS
+  PRODUCTS
+  REPS
+}
+
+enum SyncStatus {
+  HEALTHY
+  BACKFILLING
+  DEGRADED
+  FAILED
+}
+
+model SyncState {
+  id               String     @id @default(cuid())
+  workspaceId      String
+  domain           SyncDomain
+  status           SyncStatus @default(BACKFILLING)
+  lastSyncedAt     DateTime?
+  lastSuccessAt    DateTime?
+  cursor           String?    // resumable pagination cursor
+  totalRecords     Int?       // backfill progress denominator
+  processedRecords Int        @default(0)
+  lastError        String?
+  lastErrorAt      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, domain])
+  @@map("sync_state")
+}
+
+model RawEvent {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  source          String    // "webhook" | "backfill" | "reconcile"
+  eventType       String    // e.g., "order.created"
+  fluidEntityId   String?
+  payload         Json
+  processedAt     DateTime?
+  processingError String?
+  receivedAt      DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, eventType, receivedAt])
+  @@index([workspaceId, processedAt])
+  @@map("raw_events")
+}
