@@ -6,6 +6,8 @@ import { productRoutes } from './routes/products';
 import { orderRoutes } from './routes/orders';
 import { repRoutes } from './routes/reps';
 import { testWebhookRoutes } from './routes/testWebhook';
+import { whatsappRoutes } from './routes/whatsapp';
+import { mpesaRoutes } from './routes/mpesa';
 
 // Create Fastify instance with all configuration
 const fastify = createFastifyInstance();
@@ -18,6 +20,8 @@ fastify.register(productRoutes);
 fastify.register(orderRoutes);
 fastify.register(repRoutes);
 fastify.register(testWebhookRoutes);
+fastify.register(whatsappRoutes);
+fastify.register(mpesaRoutes);
 
 // Start the server
 const start = async () => {

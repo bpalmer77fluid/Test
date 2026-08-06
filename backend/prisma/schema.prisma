@@ -43,6 +43,8 @@ model Installation {
   products              Product[]
   orders                Order[]
   reps                  Rep[]
+  whatsappSessions      WhatsAppSession[]
+  mpesaPayments         MpesaPayment[]
 
   @@map("installations")
 }
@@ -114,4 +116,41 @@ model Rep {
 
   @@unique([installationId, fluidRepId])
   @@map("reps")
+}
+
+model WhatsAppSession {
+  id             String   @id @default(cuid())
+  installationId String
+  phone          String   // Customer WhatsApp number (E.164 without "+")
+  repId          String?  // Attributed rep, bound from wa.me deep-link referral
+  state          String   @default("active") // Conversation state machine
+  cartData       Json?    // In-progress cart, if any
+  lastMessageAt  DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, phone])
+  @@map("whatsapp_sessions")
+}
+
+model MpesaPayment {
+  id                String   @id @default(cuid())
+  installationId    String
+  orderReference    String   // Local/Fluid order reference this payment settles
+  checkoutRequestId String   @unique // Daraja STK push CheckoutRequestID
+  merchantRequestId String?
+  phone             String
+  amount            String
+  status            String   @default("pending") // pending, success, failed
+  receiptNumber     String?  // MpesaReceiptNumber on success
+  resultDescription String?
+  rawCallback       Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  installation      Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@map("mpesa_payments")
 }
