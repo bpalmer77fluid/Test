@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 870" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrowR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#B9847F"/>
+    </marker>
+    <marker id="arrowG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7FB89A"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="870" fill="#FFFFFF"/>
+
+  <!-- Title -->
+  <text x="620" y="44" text-anchor="middle" font-size="26" font-weight="bold" fill="#26211F">Forever Living Kenya reps on WhatsApp</text>
+  <text x="620" y="72" text-anchor="middle" font-size="15" fill="#6B615E">How an order happens today vs on the Fluid WhatsApp Commerce droplet</text>
+
+  <!-- ============ LEFT: TODAY ============ -->
+  <rect x="24" y="96" width="580" height="700" rx="14" fill="#FBF4F3" stroke="#E8CDCA"/>
+  <text x="314" y="130" text-anchor="middle" font-size="18" font-weight="bold" fill="#A63B33">TODAY — manual chat commerce</text>
+
+  <!-- step boxes -->
+  <g font-size="13.5" fill="#3A2E2C">
+    <rect x="60" y="150" width="508" height="60" rx="9" fill="#FFFFFF" stroke="#DDB6B2"/>
+    <text x="76" y="175" font-weight="bold">1 · Rep markets manually</text>
+    <text x="76" y="196">Posts product photos on WhatsApp status, TikTok, Facebook</text>
+
+    <line x1="314" y1="210" x2="314" y2="238" stroke="#B9847F" stroke-width="2" marker-end="url(#arrowR)"/>
+
+    <rect x="60" y="242" width="508" height="60" rx="9" fill="#FFFFFF" stroke="#DDB6B2"/>
+    <text x="76" y="267" font-weight="bold">2 · Customer DMs free text</text>
+    <text x="76" y="288">Types product names + full name + national ID number</text>
+    <rect x="428" y="252" width="126" height="22" rx="11" fill="#F6E0DE"/>
+    <text x="491" y="267" text-anchor="middle" font-size="11.5" fill="#A63B33">typos &amp; leakage</text>
+
+    <line x1="314" y1="302" x2="314" y2="330" stroke="#B9847F" stroke-width="2" marker-end="url(#arrowR)"/>
+
+    <rect x="60" y="334" width="508" height="60" rx="9" fill="#FFFFFF" stroke="#DDB6B2"/>
+    <text x="76" y="359" font-weight="bold">3 · Rep prices and relays the order</text>
+    <text x="76" y="380">Forwards to the Nairobi office by WhatsApp / phone</text>
+    <rect x="446" y="344" width="108" height="22" rx="11" fill="#F6E0DE"/>
+    <text x="500" y="359" text-anchor="middle" font-size="11.5" fill="#A63B33">hours pass</text>
+
+    <line x1="314" y1="394" x2="314" y2="422" stroke="#B9847F" stroke-width="2" marker-end="url(#arrowR)"/>
+
+    <rect x="60" y="426" width="508" height="60" rx="9" fill="#FFFFFF" stroke="#DDB6B2"/>
+    <text x="76" y="451" font-weight="bold">4 · Manual M-Pesa transfer</text>
+    <text x="76" y="472">Customer sends money separately, screenshot as proof</text>
+    <rect x="446" y="436" width="108" height="22" rx="11" fill="#F6E0DE"/>
+    <text x="500" y="451" text-anchor="middle" font-size="11.5" fill="#A63B33">unverified</text>
+
+    <line x1="314" y1="486" x2="314" y2="514" stroke="#B9847F" stroke-width="2" marker-end="url(#arrowR)"/>
+
+    <rect x="60" y="518" width="508" height="60" rx="9" fill="#FFFFFF" stroke="#DDB6B2"/>
+    <text x="76" y="543" font-weight="bold">5 · Office reconciles by hand</text>
+    <text x="76" y="564">Staff match payments to orders one by one</text>
+    <rect x="390" y="528" width="164" height="22" rx="11" fill="#F6E0DE"/>
+    <text x="472" y="543" text-anchor="middle" font-size="11.5" fill="#A63B33">manual reconciliation</text>
+
+    <line x1="314" y1="578" x2="314" y2="606" stroke="#B9847F" stroke-width="2" marker-end="url(#arrowR)"/>
+
+    <rect x="60" y="610" width="508" height="60" rx="9" fill="#FFFFFF" stroke="#DDB6B2"/>
+    <text x="76" y="635" font-weight="bold">6 · Pickup or ad-hoc delivery</text>
+    <text x="76" y="656">Collect at Reinsurance Plaza, or rep arranges a courier</text>
+
+    <line x1="314" y1="670" x2="314" y2="698" stroke="#B9847F" stroke-width="2" marker-end="url(#arrowR)"/>
+
+    <rect x="60" y="702" width="508" height="60" rx="9" fill="#FFFFFF" stroke="#DDB6B2"/>
+    <text x="76" y="727" font-weight="bold">7 · Commission if remembered</text>
+    <text x="76" y="748">Credit depends on the customer mentioning the rep</text>
+    <rect x="410" y="712" width="144" height="22" rx="11" fill="#F6E0DE"/>
+    <text x="482" y="727" text-anchor="middle" font-size="11.5" fill="#A63B33">attribution lost</text>
+  </g>
+
+  <!-- ============ RIGHT: FUTURE ============ -->
+  <rect x="636" y="96" width="580" height="700" rx="14" fill="#F1F8F4" stroke="#BFDECB"/>
+  <text x="926" y="130" text-anchor="middle" font-size="18" font-weight="bold" fill="#1E7F4F">ON FLUID — WhatsApp Commerce droplet</text>
+
+  <g font-size="13.5" fill="#22332A">
+    <rect x="672" y="156" width="508" height="70" rx="9" fill="#FFFFFF" stroke="#A9D6BC"/>
+    <text x="688" y="182" font-weight="bold">1 · Customer taps the rep's personal link</text>
+    <text x="688" y="203">wa.me deep link carries the rep's ID into the chat</text>
+    <rect x="1010" y="166" width="156" height="22" rx="11" fill="#DDF0E4"/>
+    <text x="1088" y="181" text-anchor="middle" font-size="11.5" fill="#1E7F4F">rep auto-attributed</text>
+
+    <line x1="926" y1="226" x2="926" y2="270" stroke="#7FB89A" stroke-width="2" marker-end="url(#arrowG)"/>
+
+    <rect x="672" y="274" width="508" height="70" rx="9" fill="#FFFFFF" stroke="#A9D6BC"/>
+    <text x="688" y="300" font-weight="bold">2 · Browses the native WhatsApp catalog</text>
+    <text x="688" y="321">Builds a cart in-app — products synced from Fluid</text>
+    <rect x="1022" y="284" width="144" height="22" rx="11" fill="#DDF0E4"/>
+    <text x="1094" y="299" text-anchor="middle" font-size="11.5" fill="#1E7F4F">synced from Fluid</text>
+
+    <line x1="926" y1="344" x2="926" y2="388" stroke="#7FB89A" stroke-width="2" marker-end="url(#arrowG)"/>
+
+    <rect x="672" y="392" width="508" height="70" rx="9" fill="#FFFFFF" stroke="#A9D6BC"/>
+    <text x="688" y="418" font-weight="bold">3 · Cart becomes a Fluid order automatically</text>
+    <text x="688" y="439">Webhook turns the cart into a structured, rep-tagged order</text>
+    <rect x="1032" y="402" width="134" height="22" rx="11" fill="#DDF0E4"/>
+    <text x="1099" y="417" text-anchor="middle" font-size="11.5" fill="#1E7F4F">structured data</text>
+
+    <line x1="926" y1="462" x2="926" y2="506" stroke="#7FB89A" stroke-width="2" marker-end="url(#arrowG)"/>
+
+    <rect x="672" y="510" width="508" height="70" rx="9" fill="#FFFFFF" stroke="#A9D6BC"/>
+    <text x="688" y="536" font-weight="bold">4 · M-Pesa PIN prompt pops in the chat</text>
+    <text x="688" y="557">STK push — pay without leaving WhatsApp</text>
+    <rect x="1032" y="520" width="134" height="22" rx="11" fill="#DDF0E4"/>
+    <text x="1099" y="535" text-anchor="middle" font-size="11.5" fill="#1E7F4F">auto-reconciled</text>
+
+    <line x1="926" y1="580" x2="926" y2="624" stroke="#7FB89A" stroke-width="2" marker-end="url(#arrowG)"/>
+
+    <rect x="672" y="628" width="508" height="70" rx="9" fill="#FFFFFF" stroke="#A9D6BC"/>
+    <text x="688" y="654" font-weight="bold">5 · Receipt in chat, commission in Fluid</text>
+    <text x="688" y="675">Order paid, fulfillment starts, rep credited — instantly</text>
+    <rect x="1044" y="638" width="122" height="22" rx="11" fill="#DDF0E4"/>
+    <text x="1105" y="653" text-anchor="middle" font-size="11.5" fill="#1E7F4F">&lt; 3 minutes</text>
+  </g>
+
+  <!-- ============ METRICS BAND ============ -->
+  <rect x="24" y="812" width="1192" height="44" rx="10" fill="#26211F"/>
+  <text x="620" y="840" text-anchor="middle" font-size="14.5" fill="#FFFFFF">
+    Order cycle: hours–days → under 3 min&#160;&#160;·&#160;&#160;Reconciliation: by hand → automatic&#160;&#160;·&#160;&#160;Rep attribution: by memory → built-in
+  </text>
+</svg>
