@@ -19,6 +19,8 @@ export interface WhatsAppTenant {
   phoneNumberId: string
   accessToken: string
   catalogId?: string | null
+  /** WhatsApp Business Account ID — required for template management. */
+  wabaId?: string | null
 }
 
 export interface WhatsAppOrderItem {
@@ -47,7 +49,8 @@ export class WhatsAppService {
     return {
       phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
       accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
-      catalogId: process.env.WHATSAPP_CATALOG_ID || null
+      catalogId: process.env.WHATSAPP_CATALOG_ID || null,
+      wabaId: process.env.WHATSAPP_WABA_ID || null
     }
   }
 
@@ -131,6 +134,33 @@ export class WhatsAppService {
         type: 'catalog_message',
         body: { text: bodyText },
         action: { name: 'catalog_message' }
+      }
+    })
+  }
+
+  /**
+   * Send an approved template message. This is the ONLY way to reach a
+   * customer outside the 24-hour customer-service window.
+   */
+  static async sendTemplate(
+    tenant: WhatsAppTenant,
+    to: string,
+    templateName: string,
+    language: string,
+    bodyParams: string[] = []
+  ): Promise<void> {
+    const components = bodyParams.length
+      ? [{ type: 'body', parameters: bodyParams.map(text => ({ type: 'text', text })) }]
+      : undefined
+
+    await this.graphRequest(tenant.accessToken, `/${tenant.phoneNumberId}/messages`, {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: language },
+        ...(components ? { components } : {})
       }
     })
   }

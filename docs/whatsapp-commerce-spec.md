@@ -74,9 +74,32 @@ All of this compiles today (TypeScript clean, Prisma schema valid):
 - **`backend/src/routes/mpesa.ts`** — the payment callback. Settles the
   payment record, flips the order to paid, and sends the in-chat receipt
   (or a "reply *pay* to retry" notice on failure).
-- **Two new Prisma models** — `WhatsAppSession` (conversation state + rep
-  binding per customer phone) and `MpesaPayment` (one row per STK push,
-  keyed by Daraja's CheckoutRequestID, raw callback kept for audit).
+- **Prisma models** — `WhatsAppSession` (conversation state + rep binding per
+  customer phone), `MpesaPayment` (one row per STK push, keyed by Daraja's
+  CheckoutRequestID, raw callback kept for audit), `WhatsAppConfig`
+  (per-tenant credentials), `MessageTemplate`, and `CartRecovery`.
+- **`backend/src/services/templateService.ts`** — the template manager. Ships
+  a pre-built, compliance-reviewed library (cart recovery ×3, receipt, order
+  status, payment failed), submits it to Meta on the client's behalf, and
+  polls approval status. Clients never open the Meta console.
+- **`backend/src/services/cartRecoveryService.ts`** — abandoned-cart recovery
+  on a 30-minute / 24-hour / 72-hour arc, plus `reply pay` retry that re-fires
+  the STK push. Industry benchmark for this flow is 18–23% recovery, and
+  automated flows drive 60–70% of WhatsApp revenue.
+- **`backend/src/routes/templates.ts`** and **`routes/jobs.ts`** — template
+  seed/submit/sync endpoints and the recovery runner
+  (`POST /api/jobs/cart-recovery`, secret-protected, cron-friendly, with an
+  optional in-process interval for demos).
+
+### The 24-hour window, handled correctly
+
+Free-form messages are only legal within 24 hours of the customer's last
+inbound message. The recovery service checks `whatsapp_sessions.lastMessageAt`
+and picks its channel accordingly: **inside** the window it sends plain text;
+**outside** it requires an APPROVED template and **skips the send rather than
+attempting a non-compliant one**. That dependency is why the template manager
+had to land before recovery could work — it is the critical path, not the
+conversation state machine.
 
 ### Rep attribution, the key MLM detail
 

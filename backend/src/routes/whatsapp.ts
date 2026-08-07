@@ -3,6 +3,7 @@ import { prisma } from '../db'
 import { WhatsAppService, WhatsAppTenant, InboundWhatsAppMessage } from '../services/whatsappService'
 import { MpesaService } from '../services/mpesaService'
 import { FluidService } from '../services/fluidService'
+import { CartRecoveryService } from '../services/cartRecoveryService'
 
 /**
  * WhatsApp Cloud API webhook endpoints.
@@ -77,7 +78,7 @@ export async function whatsappRoutes(fastify: FastifyInstance) {
 async function resolveTenant(fastify: FastifyInstance, phoneNumberId?: string): Promise<ResolvedTenant | null> {
   if (phoneNumberId) {
     const configs = await prisma.$queryRaw`
-      SELECT wc."installationId", wc."phoneNumberId", wc."accessToken", wc."catalogId"
+      SELECT wc."installationId", wc."phoneNumberId", wc."accessToken", wc."catalogId", wc."wabaId"
       FROM whatsapp_configs wc
       JOIN installations i ON wc."installationId" = i.id
       WHERE wc."phoneNumberId" = ${phoneNumberId} AND i."isActive" = true
@@ -91,7 +92,8 @@ async function resolveTenant(fastify: FastifyInstance, phoneNumberId?: string): 
         tenant: {
           phoneNumberId: config.phoneNumberId,
           accessToken: config.accessToken,
-          catalogId: config.catalogId
+          catalogId: config.catalogId,
+          wabaId: config.wabaId
         }
       }
     }
@@ -163,13 +165,76 @@ async function handleInbound(fastify: FastifyInstance, message: InboundWhatsAppM
 
   if (message.type === 'order' && message.orderItems?.length) {
     await handleCartSubmission(fastify, installationId, tenant, message, repShareGuid)
-  } else if (message.type === 'text') {
-    // Any text starts (or restarts) the shopping flow with the native catalog
+    return
+  }
+
+  const keyword = (message.text || '').trim().toLowerCase()
+
+  // Keyword handling must come before the catalog fallback, otherwise a
+  // customer replying "pay" to a recovery message just gets the catalog again.
+  if (message.type === 'text' || message.type === 'interactive') {
+    if (keyword === 'pay' || keyword === 'lipa') {
+      await handlePayRetry(fastify, installationId, tenant, message.from)
+      return
+    }
+
+    if (keyword === 'cancel' || keyword === 'stop') {
+      await CartRecoveryService.cancelAllForPhone(installationId, message.from)
+      await WhatsAppService.sendText(
+        tenant,
+        message.from,
+        keyword === 'stop'
+          ? 'You will not receive further order reminders. Message us any time to shop again.'
+          : 'Your open order has been closed. Message us any time to shop again.'
+      )
+      return
+    }
+  }
+
+  if (message.type === 'text') {
+    // Any other text starts (or restarts) the shopping flow with the native catalog
     await WhatsAppService.sendCatalogMessage(
       tenant,
       message.from,
       'Karibu! Browse our catalog below and add items to your cart. When you send the cart we will send an M-Pesa prompt to this number.'
     )
+  }
+}
+
+/** "reply pay" — re-fire the M-Pesa prompt for the customer's open cart. */
+async function handlePayRetry(
+  fastify: FastifyInstance,
+  installationId: string,
+  tenant: WhatsAppTenant,
+  phone: string
+) {
+  try {
+    const retry = await CartRecoveryService.retryPayment(installationId, phone, fastify.log)
+
+    if (!retry.retried) {
+      await WhatsAppService.sendText(
+        tenant,
+        phone,
+        'You do not have an order waiting for payment. Browse the catalog to start a new order.'
+      )
+      await WhatsAppService.sendCatalogMessage(tenant, phone, 'Karibu! Here is our catalog.')
+      return
+    }
+
+    await WhatsAppService.sendOrderConfirmation(
+      tenant,
+      phone,
+      retry.orderReference!,
+      retry.amount!,
+      'We have sent the M-Pesa prompt again — check your phone and enter your PIN. 🙏'
+    )
+  } catch (err) {
+    fastify.log.error(`❌ Pay retry failed for ${phone}: ${err}`)
+    await WhatsAppService.sendText(
+      tenant,
+      phone,
+      'We could not send the M-Pesa prompt just now. Please try again in a few minutes.'
+    ).catch(() => undefined)
   }
 }
 
@@ -232,6 +297,16 @@ async function handleCartSubmission(
       ${String(totalKes)}, 'pending', NOW(), NOW()
     )
   `
+
+  // Make this cart recoverable: if the PIN is never entered, the recovery
+  // arc (30 min / 24h / 72h) will chase it.
+  await CartRecoveryService.schedule({
+    installationId,
+    orderReference,
+    phone: message.from,
+    amount: totalKes,
+    itemsSummary: `${items.length} item${items.length === 1 ? '' : 's'}`
+  })
 
   await WhatsAppService.sendOrderConfirmation(
     tenant,

@@ -3,6 +3,7 @@ import { prisma } from '../db'
 import { MpesaService } from '../services/mpesaService'
 import { WhatsAppService, WhatsAppTenant } from '../services/whatsappService'
 import { FluidService } from '../services/fluidService'
+import { CartRecoveryService } from '../services/cartRecoveryService'
 
 /**
  * M-Pesa Daraja callback endpoint. Safaricom POSTs the STK push result here;
@@ -57,6 +58,9 @@ export async function mpesaRoutes(fastify: FastifyInstance) {
           WHERE "installationId" = ${payment.installationId} AND "fluidOrderId" = ${payment.orderReference}
         `
 
+        // Stop the recovery arc — this cart converted
+        await CartRecoveryService.markRecovered(payment.installationId, payment.orderReference)
+
         // Mark the order paid in Fluid so fulfillment and rep commissions fire upstream
         if (payment.fluidOrderId) {
           const ctx = await FluidService.getInstallationContext(payment.installationId)
@@ -81,10 +85,13 @@ export async function mpesaRoutes(fastify: FastifyInstance) {
           ).catch(err => fastify.log.error(`❌ Failed to send WhatsApp receipt: ${err}`))
         }
       } else if (tenant) {
+        // The customer just interacted, so we are inside the 24h window and
+        // free-form text is fine. The recovery arc (30min/24h/72h) takes over
+        // from here using approved templates once the window closes.
         await WhatsAppService.sendText(
           tenant,
           payment.phone,
-          `Payment for order ${payment.orderReference} was not completed (${result.resultDescription}). Reply "pay" to try again.`
+          `Payment for order ${payment.orderReference} was not completed (${result.resultDescription}). Reply *pay* to try again.`
         ).catch(err => fastify.log.error(`❌ Failed to send WhatsApp payment-failure notice: ${err}`))
       }
 
@@ -100,7 +107,7 @@ export async function mpesaRoutes(fastify: FastifyInstance) {
 /** Tenant lookup for outbound messages: per-installation config, env fallback. */
 async function resolveTenantForInstallation(installationId: string): Promise<WhatsAppTenant | null> {
   const configs = await prisma.$queryRaw`
-    SELECT "phoneNumberId", "accessToken", "catalogId"
+    SELECT "phoneNumberId", "accessToken", "catalogId", "wabaId"
     FROM whatsapp_configs
     WHERE "installationId" = ${installationId}
     LIMIT 1
@@ -110,7 +117,8 @@ async function resolveTenantForInstallation(installationId: string): Promise<Wha
     return {
       phoneNumberId: configs[0].phoneNumberId,
       accessToken: configs[0].accessToken,
-      catalogId: configs[0].catalogId
+      catalogId: configs[0].catalogId,
+      wabaId: configs[0].wabaId
     }
   }
 
