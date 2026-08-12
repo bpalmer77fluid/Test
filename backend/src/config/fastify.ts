@@ -7,6 +7,17 @@ export function createFastifyInstance() {
     logger: { level: 'info' }
   });
 
+  // Keep the raw JSON body alongside the parsed one — Meta's
+  // X-Hub-Signature-256 must be verified over the exact bytes received.
+  fastify.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, body, done) => {
+    ;(request as any).rawBody = body
+    try {
+      done(null, body.length ? JSON.parse(body.toString('utf8')) : {})
+    } catch (err) {
+      done(err as Error, undefined)
+    }
+  });
+
   // Register plugins
   fastify.register(helmet);
 

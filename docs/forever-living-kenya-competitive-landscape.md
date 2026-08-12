@@ -66,6 +66,35 @@ genuinely innovative, but the company ceased operations in 2024 when venture
 funding dried up. Agent-network economics must work on unit margins, not
 subsidy.
 
+## 2b. The Tooling Layer Reps Already Use
+
+Not competitors to FLP, but competitors to *any official channel Fluid
+builds* — because reps adopt them unprompted and they set the expectation of
+"good enough".
+
+- **Kyte** (`kyte.site`) — Brazilian POS/inventory app built around WhatsApp
+  selling: free tier, self-signup, storefront at `your-business.kyte.site`,
+  60,000+ merchants. An FLP FBO runs
+  `forever-living-products-7.kyte.site`; the `-7` slug suffix shows at least
+  six other accounts had already claimed the brand name. Not a corporate
+  deployment, and no evidence FLP uses Kyte in any market.
+- **Comparable tools:** WhatsApp Business app catalogs (free, native), plus
+  Wati/Zoko/Interakt-class SaaS at the higher end.
+
+**What this tells us:**
+
+- **Demand is validated** — reps build WhatsApp storefronts without being
+  asked.
+- **The bar is low but real** — these tools deliver a catalog link and a
+  manual chat handoff, quickly and free. Any official product must be at
+  least as easy to start.
+- **The gap is the moat** — none of them can bind an order to the rep,
+  create it in the company's commerce platform so commissions fire, or
+  auto-reconcile mobile money. That is precisely what an official,
+  platform-integrated channel adds.
+- **For FLP it is shadow commerce** — branded storefronts moving product
+  with no corporate visibility into pricing, claims, or attribution.
+
 ## 3. Cross-Cutting Success Patterns
 
 1. **M-Pesa-native payments** — winners meet buyers on mobile money; losers

@@ -1,17 +1,28 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { prisma } from '../db'
 import { MpesaService } from '../services/mpesaService'
-import { WhatsAppService } from '../services/whatsappService'
+import { WhatsAppService, WhatsAppTenant } from '../services/whatsappService'
+import { FluidService } from '../services/fluidService'
+import { CartRecoveryService } from '../services/cartRecoveryService'
 
 /**
  * M-Pesa Daraja callback endpoint. Safaricom POSTs the STK push result here;
- * we settle the payment record, flip the order, and close the loop in WhatsApp.
+ * we settle the payment record, flip the order (locally and in Fluid), and
+ * close the loop in WhatsApp.
  */
 export async function mpesaRoutes(fastify: FastifyInstance) {
   fastify.post('/api/webhook/mpesa/callback', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      // TODO(security): restrict by Safaricom IP allowlist or a secret path segment;
-      // Daraja callbacks carry no signature.
+      // Daraja callbacks carry no signature. A shared-secret path segment plus
+      // (in production) Safaricom's published IP ranges is the practical guard.
+      if (process.env.MPESA_CALLBACK_SECRET) {
+        const provided = (request.query as Record<string, string>)?.secret
+        if (provided !== process.env.MPESA_CALLBACK_SECRET) {
+          fastify.log.warn('🚫 M-Pesa callback rejected: bad callback secret')
+          return reply.status(401).send({ error: 'Unauthorized' })
+        }
+      }
+
       const result = MpesaService.parseCallback(request.body)
       if (!result) {
         fastify.log.warn('⚠️ Unrecognized M-Pesa callback payload')
@@ -20,6 +31,7 @@ export async function mpesaRoutes(fastify: FastifyInstance) {
 
       fastify.log.info(`💰 M-Pesa callback ${result.checkoutRequestId}: ${result.success ? 'PAID' : 'FAILED'} (${result.resultDescription})`)
 
+      // Idempotency: only transition rows still pending, so Daraja retries no-op
       const payments = await prisma.$queryRaw`
         UPDATE mpesa_payments
         SET status = ${result.success ? 'success' : 'failed'},
@@ -27,16 +39,17 @@ export async function mpesaRoutes(fastify: FastifyInstance) {
             "resultDescription" = ${result.resultDescription},
             "rawCallback" = ${JSON.stringify(request.body)}::jsonb,
             "updatedAt" = NOW()
-        WHERE "checkoutRequestId" = ${result.checkoutRequestId}
-        RETURNING "installationId", "orderReference", phone, amount
+        WHERE "checkoutRequestId" = ${result.checkoutRequestId} AND status = 'pending'
+        RETURNING "installationId", "orderReference", "fluidOrderId", phone, amount
       ` as any[]
 
       if (!payments.length) {
-        fastify.log.warn(`⚠️ No mpesa_payments row for checkoutRequestId ${result.checkoutRequestId}`)
+        fastify.log.warn(`⚠️ No pending mpesa_payments row for checkoutRequestId ${result.checkoutRequestId} (missing or already settled)`)
         return reply.send({ ResultCode: 0, ResultDesc: 'Accepted' })
       }
 
       const payment = payments[0]
+      const tenant = await resolveTenantForInstallation(payment.installationId)
 
       if (result.success) {
         await prisma.$executeRaw`
@@ -45,19 +58,40 @@ export async function mpesaRoutes(fastify: FastifyInstance) {
           WHERE "installationId" = ${payment.installationId} AND "fluidOrderId" = ${payment.orderReference}
         `
 
-        // TODO(fluid-order): mark the order paid in Fluid via the platform API
-        // so fulfillment and rep commission events fire upstream.
+        // Stop the recovery arc — this cart converted
+        await CartRecoveryService.markRecovered(payment.installationId, payment.orderReference)
 
-        await WhatsAppService.sendOrderConfirmation(
-          payment.phone,
-          payment.orderReference,
-          Number(payment.amount),
-          `Payment received ✅ (M-Pesa ref ${result.receiptNumber}). We are preparing your order.`
-        ).catch(err => fastify.log.error(`❌ Failed to send WhatsApp receipt: ${err}`))
-      } else {
+        // Mark the order paid in Fluid so fulfillment and rep commissions fire upstream
+        if (payment.fluidOrderId) {
+          const ctx = await FluidService.getInstallationContext(payment.installationId)
+          if (ctx) {
+            const marked = await FluidService.markOrderPaid(
+              ctx,
+              payment.fluidOrderId,
+              { amountKes: Number(payment.amount), receiptNumber: result.receiptNumber },
+              fastify.log
+            )
+            if (!marked) fastify.log.warn(`⚠️ Could not mark Fluid order ${payment.fluidOrderId} paid; local state is settled`)
+          }
+        }
+
+        if (tenant) {
+          await WhatsAppService.sendOrderConfirmation(
+            tenant,
+            payment.phone,
+            payment.orderReference,
+            Number(payment.amount),
+            `Payment received ✅ (M-Pesa ref ${result.receiptNumber}). We are preparing your order.`
+          ).catch(err => fastify.log.error(`❌ Failed to send WhatsApp receipt: ${err}`))
+        }
+      } else if (tenant) {
+        // The customer just interacted, so we are inside the 24h window and
+        // free-form text is fine. The recovery arc (30min/24h/72h) takes over
+        // from here using approved templates once the window closes.
         await WhatsAppService.sendText(
+          tenant,
           payment.phone,
-          `Payment for order ${payment.orderReference} was not completed (${result.resultDescription}). Reply "pay" to try again.`
+          `Payment for order ${payment.orderReference} was not completed (${result.resultDescription}). Reply *pay* to try again.`
         ).catch(err => fastify.log.error(`❌ Failed to send WhatsApp payment-failure notice: ${err}`))
       }
 
@@ -68,4 +102,26 @@ export async function mpesaRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'M-Pesa callback processing failed' })
     }
   })
+}
+
+/** Tenant lookup for outbound messages: per-installation config, env fallback. */
+async function resolveTenantForInstallation(installationId: string): Promise<WhatsAppTenant | null> {
+  const configs = await prisma.$queryRaw`
+    SELECT "phoneNumberId", "accessToken", "catalogId", "wabaId"
+    FROM whatsapp_configs
+    WHERE "installationId" = ${installationId}
+    LIMIT 1
+  ` as any[]
+
+  if (configs.length) {
+    return {
+      phoneNumberId: configs[0].phoneNumberId,
+      accessToken: configs[0].accessToken,
+      catalogId: configs[0].catalogId,
+      wabaId: configs[0].wabaId
+    }
+  }
+
+  const envTenant = WhatsAppService.envTenant()
+  return envTenant.accessToken && envTenant.phoneNumberId ? envTenant : null
 }

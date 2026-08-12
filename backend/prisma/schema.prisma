@@ -45,8 +45,81 @@ model Installation {
   reps                  Rep[]
   whatsappSessions      WhatsAppSession[]
   mpesaPayments         MpesaPayment[]
+  whatsappConfig        WhatsAppConfig?
+  messageTemplates      MessageTemplate[]
+  cartRecoveries        CartRecovery[]
 
   @@map("installations")
+}
+
+model WhatsAppConfig {
+  id             String   @id @default(cuid())
+  installationId String   @unique
+  phoneNumberId  String   @unique // Cloud API phone number ID — the inbound routing key
+  accessToken    String   // WABA system-user token for this tenant
+  catalogId      String?  // Meta Commerce Manager catalog ID
+  wabaId         String?  // WhatsApp Business Account ID — required to manage templates
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_configs")
+}
+
+/// Message templates required to message a customer outside the 24-hour
+/// customer-service window. Mirrors Meta's template registry so clients never
+/// touch the Meta console (see docs/whatsapp-commerce-competitive-playbook.md).
+model MessageTemplate {
+  id              String   @id @default(cuid())
+  installationId  String
+  purpose         String   // Stable key we send by: cart_recovery_1, order_receipt, ...
+  name            String   // Meta template name (lowercase, snake_case)
+  language        String   @default("en")
+  category        String   // UTILITY | MARKETING | AUTHENTICATION
+  bodyText        String   // Body with {{1}}-style placeholders
+  headerText      String?
+  footerText      String?
+  buttons         Json?    // Meta BUTTONS component payload
+  placeholderCount Int     @default(0)
+  metaTemplateId  String?  // Returned by Meta on submission
+  status          String   @default("LOCAL") // LOCAL, PENDING, APPROVED, REJECTED, PAUSED, DISABLED
+  rejectionReason String?
+  lastSyncedAt    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  installation    Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, name, language])
+  @@index([installationId, purpose, status])
+  @@map("message_templates")
+}
+
+/// One row per abandoned cart (order that reached STK push but never settled).
+/// Drives the 30-minute / 24-hour / 72-hour recovery arc.
+model CartRecovery {
+  id              String    @id @default(cuid())
+  installationId  String
+  orderReference  String
+  phone           String
+  amount          String
+  itemsSummary    String?   // Human-readable line for the message body
+  stage           Int       @default(0) // Recovery messages sent so far
+  status          String    @default("pending") // pending, recovered, exhausted, cancelled
+  abandonedAt     DateTime  @default(now())
+  nextAttemptAt   DateTime? // Null once terminal
+  lastAttemptAt   DateTime?
+  recoveredAt     DateTime?
+  lastError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  installation    Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, orderReference])
+  @@index([status, nextAttemptAt])
+  @@map("cart_recoveries")
 }
 
 model Product {
@@ -138,7 +211,8 @@ model WhatsAppSession {
 model MpesaPayment {
   id                String   @id @default(cuid())
   installationId    String
-  orderReference    String   // Local/Fluid order reference this payment settles
+  orderReference    String   // Local order reference (WA-xxxx) this payment settles
+  fluidOrderId      String?  // Fluid platform order ID, when creation succeeded
   checkoutRequestId String   @unique // Daraja STK push CheckoutRequestID
   merchantRequestId String?
   phone             String

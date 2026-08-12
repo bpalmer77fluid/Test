@@ -65,6 +65,33 @@ site but by **independent FBO sites**:
   **Europe-based sponsor** targeting Kenyan sign-ups.
 - Assorted Kyte/WordPress/Facebook shops.
 
+### Distributors are already DIY-ing WhatsApp storefronts
+
+The clearest example: `forever-living-products-7.kyte.site` — an FBO-run
+catalog on **Kyte**, a Brazilian POS/inventory app whose entire pitch is
+selling over WhatsApp (free tier, self-signup, storefront published at
+`your-business.kyte.site`, order pages and all).
+
+The `-7` suffix is the tell: Kyte slugs are unique, so at least six other
+accounts had already claimed "forever-living-products". This is an
+auto-deduplicated free signup by an individual, not a corporate deployment —
+FLP corporate shows no sign of using Kyte in any market, and would not ship a
+numbered slug when Kyte offers custom domains on paid plans.
+
+Why it matters:
+
+- **Demand is already proven.** Reps reach for WhatsApp-catalog tools
+  unprompted. An official channel formalizes existing behavior rather than
+  creating a new one.
+- **It is ungoverned.** These storefronts carry FLP branding with no price
+  control, no review of health/income claims, and — critically — **no link to
+  FLP's compensation plan**, so orders placed through them are invisible to
+  the platform.
+- **It sets the competitive floor.** Kyte-class tools deliver a catalog link
+  plus a manual WhatsApp handoff. What they structurally cannot do is bind an
+  order to the rep, create it in the company's commerce platform so
+  commissions fire, or auto-reconcile mobile money.
+
 **Observations:**
 
 - **Brand fragmentation** — no consistent design, pricing, or claims across
@@ -73,6 +100,8 @@ site but by **independent FBO sites**:
   corporate .com for Kenya-intent queries.
 - **Compliance surface** — health/income claims on independent sites are
   hard for corporate to police.
+- **Shadow commerce** — rep-run WhatsApp storefronts move product with zero
+  corporate visibility into orders, pricing, or attribution.
 
 ## 5. Marketplace / Gray Market
 

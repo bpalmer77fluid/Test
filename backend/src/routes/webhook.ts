@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { prisma } from '../db'
 import { randomUUID } from 'crypto'
 import { WebhookRegistrationService } from '../services/webhookRegistration'
+import { WhatsAppService } from '../services/whatsappService'
 
 export async function webhookRoutes(fastify: FastifyInstance) {
   // Webhook endpoint for Fluid platform events
@@ -87,6 +88,38 @@ export async function webhookRoutes(fastify: FastifyInstance) {
               `;
 
               fastify.log.info(`✅ Product ${body.product.id} automatically saved to database for ${installation.companyName}`);
+
+              // Mirror the product into the Meta Commerce Manager catalog so the
+              // WhatsApp storefront stays in sync. Fire-and-forget: catalog
+              // failures never block Fluid webhook processing.
+              setImmediate(async () => {
+                try {
+                  const configs = await prisma.$queryRaw`
+                    SELECT "phoneNumberId", "accessToken", "catalogId"
+                    FROM whatsapp_configs
+                    WHERE "installationId" = ${installation.installationId}
+                    LIMIT 1
+                  ` as any[];
+
+                  const tenant = configs.length
+                    ? { phoneNumberId: configs[0].phoneNumberId, accessToken: configs[0].accessToken, catalogId: configs[0].catalogId }
+                    : WhatsAppService.envTenant();
+
+                  if (!tenant.catalogId || !tenant.accessToken) return; // WhatsApp commerce not configured for this tenant
+
+                  await WhatsAppService.syncProductToCatalog(tenant, {
+                    retailerId: body.product.sku || body.product.id.toString(),
+                    title: body.product.title,
+                    description: cleanDescription,
+                    priceKes: body.product.price || null,
+                    imageUrl: body.product.image_url || body.product.imageUrl || null,
+                    inStock: body.product.in_stock ?? true
+                  });
+                  fastify.log.info(`🛍️ Product ${body.product.id} synced to WhatsApp catalog ${tenant.catalogId}`);
+                } catch (catalogError) {
+                  fastify.log.warn(`⚠️ WhatsApp catalog sync failed for product ${body.product.id}: ${catalogError}`);
+                }
+              });
             } else {
               fastify.log.warn(`⚠️ No installation found for fluid shop: ${fluidShop}`);
             }
